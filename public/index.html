@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Firma Digital de Facturas</title>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; padding: 14px; background: #0f172a; color: #f8fafc; }
+    .card { max-width: 600px; margin: 0 auto 16px; background: #1e293b; padding: 18px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+    h2, h3 { margin-top: 0; color: #38bdf8; }
+    label { display: block; margin-top: 12px; font-size: 0.9rem; color: #cbd5e1; font-weight: 500; }
+    input[type="text"], input[type="password"], input[type="file"] {
+      width: 100%; padding: 10px; margin-top: 6px; border-radius: 8px;
+      border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 0.95rem;
+    }
+    .tabs, .row { display: flex; gap: 8px; margin-top: 10px; }
+    .tab-btn {
+      flex: 1; padding: 9px; border: 1px solid #334155; border-radius: 8px;
+      background: #0f172a; color: #94a3b8; font-weight: 600; cursor: pointer; font-size: 0.85rem;
+    }
+    .tab-btn.active { background: #0284c7; color: #fff; border-color: #0284c7; }
+    .canvas-wrap { margin-top: 8px; background: #fff; border-radius: 8px; border: 2px dashed #64748b; overflow: hidden; }
+    canvas.pad { width: 100%; height: 190px; display: block; touch-action: none; cursor: crosshair; }
+    canvas.pad-small { height: 110px; }
+    button.action {
+      flex: 1; padding: 11px; border: none; border-radius: 8px; font-weight: 600;
+      font-size: 0.92rem; cursor: pointer; color: #fff;
+    }
+    .btn-primary { background: #0284c7; width: 100%; margin-top: 14px; }
+    .btn-confirm { background: #16a34a; width: 100%; margin-top: 12px; }
+    .btn-clear { background: #475569; }
+    .btn-recover { background: #d97706; display: none; }
+    .btn-wa { background: #25D366; color: #000 !important; padding: 7px 10px; font-size: 0.82rem; border-radius: 6px; border: none; font-weight: 700; cursor: pointer; }
+    .btn-print { background: #38bdf8; color: #000 !important; padding: 7px 10px; font-size: 0.82rem; border-radius: 6px; text-decoration: none; font-weight: 700; display: inline-block; }
+    .item { background: #0f172a; padding: 12px; border-radius: 8px; margin-top: 10px; border: 1px solid #334155; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 0.75rem; font-weight: 700; }
+    .b-pend { background: #f59e0b; color: #000; }
+    .b-firm { background: #22c55e; color: #000; }
+    .status { font-size: 0.8rem; color: #4ade80; margin-top: 5px; min-height: 16px; }
+    #previewBox { display: none; margin-top: 16px; padding: 14px; background: #0f172a; border-radius: 10px; border: 1px solid #334155; text-align: center; }
+    #pdfPreviewCanvas { width: 100%; height: auto; border-radius: 6px; margin-top: 10px; background: #fff; }
+  </style>
+</head>
+<body>
+
+<!-- VISTA 1: LOGIN ADMIN -->
+<div id="viewLogin" class="card" style="display:none;">
+  <h2>Acceso al Panel de Facturas</h2>
+  <label>Usuario:</label>
+  <input type="text" id="loginUser" placeholder="rodolfo">
+  <label>Contraseña:</label>
+  <input type="password" id="loginPass" placeholder="••••">
+  <button class="action btn-primary" id="btnLogin">Ingresar</button>
+  <div id="loginErr" style="color:#f87171; margin-top:10px; font-size:0.9rem;"></div>
+</div>
+
+<!-- VISTA 2: PANEL ADMIN -->
+<div id="viewAdmin" style="display:none;">
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2 style="margin:0;">Panel de Facturas</h2>
+      <button class="action btn-clear" style="flex:0; padding:6px 12px; font-size:0.8rem;" id="btnLogout">Salir</button>
+    </div>
+
+    <label>Subir PDF de Factura / Remisión:</label>
+    <input type="file" id="adminPdf" accept="application/pdf">
+    <label>Referencia (Chofer / Cliente / N° Factura):</label>
+    <input type="text" id="adminRef" placeholder="Ej: Chofer Carlos - Fact 0013143">
+    <button class="action btn-confirm" id="btnUpload">Subir y Generar Link</button>
+    <div id="uploadMsg" class="status"></div>
+  </div>
+
+  <div class="card">
+    <h3>Documentos Recientes</h3>
+    <div id="listaFacturas">Cargando...</div>
+  </div>
+
+  <div class="card" id="boxNuevoUsuario" style="display:none;">
+    <h3>Agregar Usuario Exclusivo</h3>
+    <input type="text" id="newU" placeholder="Nuevo usuario">
+    <input type="password" id="newP" placeholder="Contraseña">
+    <button class="action btn-primary" id="btnAddUser">Crear Usuario</button>
+    <div id="userMsg" class="status"></div>
+  </div>
+</div>
+
+<!-- VISTA 3: CHOFER (FIRMA SIN LOGIN) -->
+<div id="viewChofer" class="card" style="display:none;">
+  <h2>Firma de Conformidad</h2>
+  <div id="choferInfo" style="font-size:0.9rem; color:#cbd5e1; margin-bottom:10px;">Cargando documento...</div>
+  <div id="choferBloqueado" style="display:none; padding:16px; background:#064e3b; border-radius:8px; text-align:center; font-weight:700;">
+    ✅ Esta factura ya fue firmada y guardada correctamente.
+  </div>
+
+  <div id="choferForm" style="display:none;">
+    <label>1. Firma del cliente (dedo o lápiz táctil):</label>
+    <div class="canvas-wrap"><canvas id="sigCanvas" class="pad"></canvas></div>
+    <div class="status" id="autoSaveStatus"></div>
+    <div class="row">
+      <button type="button" class="action btn-clear" id="btnClearSig">Limpiar firma</button>
+      <button type="button" class="action btn-recover" id="btnRecover">Recuperar borrador</button>
+    </div>
+
+    <label>2. Aclaración (Nombre / C.I.):</label>
+    <div class="tabs">
+      <button type="button" class="tab-btn active" id="tabTexto">⌨️ Escribir con teclado</button>
+      <button type="button" class="tab-btn" id="tabMano">✍️ Escribir a mano</button>
+    </div>
+    <div id="aclaracionTextoBox">
+      <input type="text" id="nombreInput" placeholder="Ej: Juan Pérez - CI 4.123.456">
+    </div>
+    <div id="aclaracionManoBox" style="display:none;">
+      <div class="canvas-wrap"><canvas id="aclaracionCanvas" class="pad pad-small"></canvas></div>
+      <div class="row"><button type="button" class="action btn-clear" id="btnClearAcl">Limpiar aclaración</button></div>
+    </div>
+
+    <button type="button" class="action btn-primary" id="btnPreview">Generar vista previa del PDF firmado</button>
+
+    <div id="previewBox">
+      <strong style="color:#38bdf8;" id="previewTitle">Así queda el PDF listo para guardar:</strong>
+      <canvas id="pdfPreviewCanvas"></canvas>
+      <button type="button" class="action btn-confirm" id="btnGuardarNube">Confirmar y Guardar PDF</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const facturaId = params.get('id');
+
+  // --- MODO CHOFER (si viene ?id=...) ---
+  if (facturaId) {
+    document.getElementById('viewChofer').style.display = 'block';
+    iniciarModoChofer(facturaId);
+  } else {
+    // --- MODO ADMIN ---
+    if (localStorage.getItem('fact_token')) {
+      mostrarPanelAdmin();
+    } else {
+      document.getElementById('viewLogin').style.display = 'block';
+    }
+  }
+
+  // LOGIN
+  document.getElementById('btnLogin').addEventListener('click', async () => {
+    const usuario = document.getElementById('loginUser').value.trim();
+    const password = document.getElementById('loginPass').value.trim();
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usuario, password })
+    });
+    const data = await res.json();
+    if (!res.ok) return document.getElementById('loginErr').textContent = data.error;
+    localStorage.setItem('fact_token', data.token);
+    localStorage.setItem('fact_rol', data.rol);
+    document.getElementById('viewLogin').style.display = 'none';
+    mostrarPanelAdmin();
+  });
+
+  document.getElementById('btnLogout').addEventListener('click', () => {
+    localStorage.removeItem('fact_token');
+    localStorage.removeItem('fact_rol');
+    location.reload();
+  });
+
+  async function mostrarPanelAdmin() {
+    document.getElementById('viewAdmin').style.display = 'block';
+    if (localStorage.getItem('fact_rol') === 'admin') {
+      document.getElementById('boxNuevoUsuario').style.display = 'block';
+    }
+    cargarLista();
+  }
+
+  async function cargarLista() {
+    const res = await fetch('/api/facturas', {
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('fact_token') }
+    });
+    if (res.status === 401) { localStorage.removeItem('fact_token'); return location.reload(); }
+    const lista = await res.json();
+    const cont = document.getElementById('listaFacturas');
+    if (!lista.length) return cont.innerHTML = '<p style="color:#94a3b8;">Todavía no subiste facturas.</p>';
+
+    cont.innerHTML = lista.map(f => {
+      const link = `${location.origin}/?id=${f.id}`;
+      const waText = encodeURIComponent(`Hola, te paso el link para hacer firmar la factura (${f.referencia || f.nombre_archivo}): ${link}`);
+      return `
+        <div class="item">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong>${f.referencia || f.nombre_archivo}</strong>
+            <span class="badge ${f.estado === 'FIRMADO' ? 'b-firm' : 'b-pend'}">${f.estado}</span>
+          </div>
+          <div style="font-size:0.78rem; color:#94a3b8; margin:4px 0 8px;">${f.nombre_archivo} • ${f.fecha_creacion}</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            ${f.estado === 'PENDIENTE'
+              ? `<a class="btn-wa" href="https://wa.me/?text=${waText}" target="_blank">📲 Enviar por WhatsApp</a>
+                 <button class="btn-wa" style="background:#cbd5e1;" onclick="navigator.clipboard.writeText('${link}'); alert('Link copiado');">📋 Copiar link</button>`
+              : `<a class="btn-print" href="/api/pdf/${f.id}?tipo=firmado" target="_blank">🖨️ Abrir / Imprimir Firmado</a>`
+            }
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  document.getElementById('btnUpload').addEventListener('click', async () => {
+    const file = document.getElementById('adminPdf').files[0];
+    if (!file) return alert('Seleccioná un PDF primero.');
+    const form = new FormData();
+    form.append('pdf', file);
+    form.append('referencia', document.getElementById('adminRef').value.trim());
+
+    document.getElementById('uploadMsg').textContent = 'Subiendo...';
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('fact_token') },
+      body: form
+    });
+    const data = await res.json();
+    if (res.ok) {
+      document.getElementById('uploadMsg').textContent = '✓ Subido correctamente.';
+      document.getElementById('adminPdf').value = '';
+      document.getElementById('adminRef').value = '';
+      cargarLista();
+    } else {
+      alert(data.error);
+    }
+  });
+
+  document.getElementById('btnAddUser').addEventListener('click', async () => {
+    const usuario = document.getElementById('newU').value.trim();
+    const password = document.getElementById('newP').value.trim();
+    if (!usuario || !password) return alert('Completá usuario y contraseña.');
+    const res = await fetch('/api/usuarios', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('fact_token') },
+      body: JSON.stringify({ usuario, password })
+    });
+    const data = await res.json();
+    document.getElementById('userMsg').textContent = res.ok ? '✓ Usuario creado.' : ('Error: ' + data.error);
+  });
+
+  // --- LÓGICA DEL CHOFER ---
+  async function iniciarModoChofer(id) {
+    const infoRes = await fetch(`/api/factura/${id}`);
+    if (!infoRes.ok) {
+      document.getElementById('choferInfo').textContent = '❌ Enlace inválido o factura no encontrada.';
+      return;
+    }
+    const info = await infoRes.json();
+    document.getElementById('choferInfo').textContent = `Documento: ${info.referencia || info.nombre_archivo}`;
+
+    if (info.estado === 'FIRMADO') {
+      document.getElementById('choferBloqueado').style.display = 'block';
+      return;
+    }
+
+    const pdfRes = await fetch(`/api/pdf/${id}?tipo=orig`);
+    const pdfBytes = await pdfRes.arrayBuffer();
+    document.getElementById('choferForm').style.display = 'block';
+
+    const sigCanvas = document.getElementById('sigCanvas');
+    const aclCanvas = document.getElementById('aclaracionCanvas');
+    const statusEl = document.getElementById('autoSaveStatus');
+    const btnRecover = document.getElementById('btnRecover');
+    let signedPdfBytesCache = null;
+    let modoAclaracion = 'texto';
+
+    const sigPad = new SignaturePad(sigCanvas, { penColor: '#000080', minWidth: 1.5, maxWidth: 3 });
+    const aclPad = new SignaturePad(aclCanvas, { penColor: '#000080', minWidth: 1.3, maxWidth: 2.5 });
+
+    function resizePad(canvasEl, pad) {
+      if (!canvasEl.offsetWidth) return;
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      const data = pad.toData();
+      canvasEl.width = canvasEl.offsetWidth * ratio;
+      canvasEl.height = canvasEl.offsetHeight * ratio;
+      canvasEl.getContext('2d').scale(ratio, ratio);
+      pad.clear();
+      if (data && data.length) pad.fromData(data);
+    }
+
+    resizePad(sigCanvas, sigPad);
+    window.addEventListener('resize', () => {
+      resizePad(sigCanvas, sigPad);
+      if (modoAclaracion === 'mano') resizePad(aclCanvas, aclPad);
+    });
+
+    sigPad.addEventListener('endStroke', () => {
+      if (!sigPad.isEmpty()) {
+        localStorage.setItem('borrador_' + id, sigPad.toDataURL('image/png'));
+        statusEl.textContent = '✓ Borrador guardado automáticamente';
+        btnRecover.style.display = 'none';
+      }
+    });
+    if (localStorage.getItem('borrador_' + id)) btnRecover.style.display = 'block';
+
+    document.getElementById('btnClearSig').addEventListener('click', () => {
+      sigPad.clear();
+      document.getElementById('previewBox').style.display = 'none';
+      if (localStorage.getItem('borrador_' + id)) btnRecover.style.display = 'block';
+    });
+
+    btnRecover.addEventListener('click', () => {
+      const saved = localStorage.getItem('borrador_' + id);
+      if (saved) { sigPad.fromDataURL(saved); btnRecover.style.display = 'none'; }
+    });
+
+    document.getElementById('btnClearAcl').addEventListener('click', () => aclPad.clear());
+
+    document.getElementById('tabTexto').addEventListener('click', () => {
+      modoAclaracion = 'texto';
+      document.getElementById('tabTexto').classList.add('active');
+      document.getElementById('tabMano').classList.remove('active');
+      document.getElementById('aclaracionTextoBox').style.display = 'block';
+      document.getElementById('aclaracionManoBox').style.display = 'none';
+    });
+
+    document.getElementById('tabMano').addEventListener('click', () => {
+      modoAclaracion = 'mano';
+      document.getElementById('tabMano').classList.add('active');
+      document.getElementById('tabTexto').classList.remove('active');
+      document.getElementById('aclaracionTextoBox').style.display = 'none';
+      document.getElementById('aclaracionManoBox').style.display = 'block';
+      setTimeout(() => resizePad(aclCanvas, aclPad), 50);
+    });
+
+    function getFechaHoy() {
+      const d = new Date();
+      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }
+
+    document.getElementById('btnPreview').addEventListener('click', async () => {
+      if (sigPad.isEmpty()) return alert('Falta la firma del cliente.');
+      const { PDFDocument, StandardFonts, rgb } = PDFLib;
+      const pdfDoc = await PDFDocument.load(pdfBytes.slice(0));
+      const pages = pdfDoc.getPages();
+      const lastPage = pages[pages.length - 1];
+      const { width } = lastPage.getSize();
+
+      const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+      const boxW = 200, boxH = 78;
+      const boxX = width - boxW - 50, boxY = 230;
+
+      lastPage.drawRectangle({ x: boxX, y: boxY, width: boxW, height: boxH, borderColor: rgb(0.1,0.1,0.1), borderWidth: 1.1 });
+      const titulo = 'RECIBI CONFORME';
+      const tituloW = fontBold.widthOfTextAtSize(titulo, 11);
+      lastPage.drawText(titulo, { x: boxX + (boxW - tituloW)/2, y: boxY + boxH - 16, size: 11, font: fontBold, color: rgb(0.1,0.1,0.1) });
+
+      const cT = rgb(0.1,0.1,0.1), cI = rgb(0,0,0.45);
+      lastPage.drawText('Firma:........................................................', { x: boxX+8, y: boxY+42, size: 8.5, font: fontRegular, color: cT });
+      lastPage.drawText('Aclaración:.................................................', { x: boxX+8, y: boxY+24, size: 8.5, font: fontRegular, color: cT });
+      lastPage.drawText('Fecha:........................................................', { x: boxX+8, y: boxY+8, size: 8.5, font: fontRegular, color: cT });
+
+      const sigImg = await pdfDoc.embedPng(sigPad.toDataURL('image/png'));
+      lastPage.drawImage(sigImg, { x: boxX+42, y: boxY+36, width: 115, height: 28 });
+
+      if (modoAclaracion === 'mano' && !aclPad.isEmpty()) {
+        const aclImg = await pdfDoc.embedPng(aclPad.toDataURL('image/png'));
+        lastPage.drawImage(aclImg, { x: boxX+54, y: boxY+20, width: 132, height: 22 });
+      } else {
+        const nombre = document.getElementById('nombreInput').value.trim();
+        if (nombre) lastPage.drawText(nombre.substring(0,32), { x: boxX+56, y: boxY+26, size: 8.5, font: fontBold, color: cI });
+      }
+      lastPage.drawText(getFechaHoy(), { x: boxX+40, y: boxY+10, size: 8.5, font: fontBold, color: cI });
+
+      signedPdfBytesCache = await pdfDoc.save();
+      document.getElementById('previewBox').style.display = 'block';
+
+      if (typeof pdfjsLib !== 'undefined') {
+        try {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          const pdfR = await pdfjsLib.getDocument({ data: signedPdfBytesCache.slice(0) }).promise;
+          const page = await pdfR.getPage(pdfR.numPages);
+          const vp = page.getViewport({ scale: 1.4 });
+          const c = document.getElementById('pdfPreviewCanvas');
+          c.width = vp.width; c.height = vp.height;
+          await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+        } catch {}
+      }
+      document.getElementById('previewBox').scrollIntoView({ behavior: 'smooth' });
+    });
+
+    document.getElementById('btnGuardarNube').addEventListener('click', async () => {
+      if (!signedPdfBytesCache) return;
+      const btn = document.getElementById('btnGuardarNube');
+      btn.disabled = true;
+      btn.textContent = 'Guardando...';
+
+      const res = await fetch(`/api/firmar/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/pdf' },
+        body: signedPdfBytesCache
+      });
+      if (res.ok) {
+        localStorage.removeItem('borrador_' + id);
+        document.getElementById('choferForm').style.display = 'none';
+        document.getElementById('choferBloqueado').style.display = 'block';
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Error al guardar');
+        btn.disabled = false;
+        btn.textContent = 'Confirmar y Guardar PDF';
+      }
+    });
+  }
+</script>
+</body>
+</html>
