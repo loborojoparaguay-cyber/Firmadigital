@@ -1,4 +1,3 @@
-
 {
   "name": "firmadigita",
   "main": "worker.js",
@@ -6,5 +5,18 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS"
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "facturas_firmas",
+      "database_id": "c19d9e34-be93-42c5-994b-fcd1cafac4ae"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "facturas-pdf"
+    }
+  ]
 }
