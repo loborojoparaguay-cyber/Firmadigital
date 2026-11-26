@@ -1,7 +1,10 @@
+
 {
-  "name": "factura-firma",
+  "name": "firmadigita",
+  "main": "worker.js",
   "compatibility_date": "2026-11-26",
   "assets": {
-    "directory": "."
+    "directory": "./public",
+    "binding": "ASSETS"
   }
 }
